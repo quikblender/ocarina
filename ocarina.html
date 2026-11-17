@@ -1,0 +1,102 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Ocarina Song Recognizer</title>
+<style>
+:root{color-scheme:light;--bg:#f4f1e6;--fg:#1d2a1d;--card:#fff;--mut:#6b7a6b;--ok:#2e9a4a;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){color-scheme:dark;--bg:#12180f;--fg:#e8f0dc;--card:#1b2418;--mut:#8fa08a;--ok:#5fdc7e}}
+:root[data-theme="dark"]{color-scheme:dark;--bg:#12180f;--fg:#e8f0dc;--card:#1b2418;--mut:#8fa08a;--ok:#5fdc7e}
+html,body{margin:0}body{background:var(--bg);color:var(--fg);font-family:system-ui,sans-serif;padding:16px;max-width:560px;margin:0 auto}
+h1{font-size:1.3rem;margin:4px 0 12px}
+button{font:inherit;cursor:pointer}
+#start{width:100%;padding:14px;border:0;border-radius:12px;background:var(--ok);color:#000;font-weight:700}
+.row{display:flex;gap:8px;align-items:center;margin:10px 0;font-size:.85rem;color:var(--mut)}
+select{font:inherit;padding:4px;border-radius:6px}
+#meter{height:8px;background:var(--card);border-radius:4px;overflow:hidden;flex:1}#lvl{height:100%;width:0;background:var(--ok)}
+#now{background:var(--card);border-radius:12px;padding:12px;text-align:center;min-height:64px}
+#hz{font-size:.8rem;color:var(--mut)}#heard{font-size:1.6rem;letter-spacing:6px;min-height:40px}
+#res{font-size:1.2rem;font-weight:700;color:var(--ok);min-height:28px;margin-top:4px}
+.pad{display:flex;justify-content:center;gap:8px;margin:12px 0}
+.pad button{width:52px;height:52px;border-radius:50%;border:0;font-size:1.2rem;font-weight:700;color:#fff}
+.song{background:var(--card);border-radius:10px;padding:8px 12px;margin:6px 0;display:flex;justify-content:space-between;align-items:center;gap:8px;border:2px solid transparent}
+.song.hit{border-color:var(--ok)}.song b{font-size:.9rem}.seq{letter-spacing:3px;white-space:nowrap}
+.seq i{font-style:normal;opacity:.35}.seq i.on{opacity:1}
+small{color:var(--mut)}
+</style></head><body>
+<h1>🎵 Ocarina Song Recognizer</h1>
+<button id="start">Start listening (mic)</button>
+<label style="display:block;margin-top:8px;text-align:center;padding:12px;border-radius:12px;background:var(--card);cursor:pointer">🎙 No live mic? Record with your phone, then analyze<input id="rec" type="file" accept="audio/*,video/*,.m4a,.mp3,.wav,.aac,.caf,.mp4" hidden></label>
+<div class="row"><span>Octave</span><select id="oct"><option value="-1">Lower</option><option value="0" selected>Normal (D4–D5)</option><option value="1">Higher</option></select><div id="meter"><div id="lvl"></div></div></div>
+<div id="now"><div id="hz">—</div><div id="heard"></div></div>
+<div id="res"></div>
+<div class="pad" id="pad"></div>
+<small>Play (or whistle/hum) the notes D4, F4, A4, B4, D5. Tap the buttons if the mic is blocked.</small>
+<div id="songs" style="margin-top:12px"></div>
+<script>
+// notes: A=D4, v=F4, >=A4, <=B4, ^=D5
+const N={A:{m:62,c:'#3b82f6',g:'A'},v:{m:65,c:'#e0b400',g:'▼'},'>':{m:69,c:'#e0b400',g:'▶'},'<':{m:71,c:'#e0b400',g:'◀'},'^':{m:74,c:'#e0b400',g:'▲'}};
+const SONGS=[
+["Zelda’s Lullaby","<^><^>"],["Epona’s Song","^<>^<>"],["Saria’s Song","v><v><"],["Sun’s Song",">v^>v^"],
+["Song of Time",">Av>Av"],["Song of Storms","Av^Av^"],["Minuet of Forest","A^<><>"],["Bolero of Fire","vAvA>v>v"],
+["Serenade of Water","Av>><"],["Requiem of Spirit","AvA>vA"],["Nocturne of Shadow","<>>A<>v"],["Prelude of Light","^>^><^"]];
+const $=id=>document.getElementById(id);
+const keys=Object.keys(N);let buf=[],lastT=0,ctx=null,osc=null;
+const seqHTML=(s,n)=>[...s].map((k,i)=>`<i class="${i<n?'on':''}" style="color:${N[k].c}">${N[k].g}</i>`).join('');
+function render(){const el=$('songs');el.innerHTML=SONGS.map(([n,s],i)=>{let p=0;for(let k=Math.min(buf.length,s.length);k>0;k--){if(buf.slice(-k).join('')===s.slice(0,k)){p=k;break}}
+return `<div class="song" id="s${i}"><b>${n}</b><span class="seq">${seqHTML(s,p)}</span></div>`}).join('');
+$('heard').innerHTML=buf.map(k=>`<span style="color:${N[k].c}">${N[k].g}</span>`).join('');}
+function push(k){const t=performance.now();if(t-lastT>4000)buf=[];lastT=t;buf.push(k);buf=buf.slice(-10);render();
+for(let i=0;i<SONGS.length;i++){const s=SONGS[i][1];if(buf.slice(-s.length).join('')===s){if(OFF)OFF.push(SONGS[i][0]);$('res').textContent='✨ '+SONGS[i][0]+' ✨';$('s'+i).classList.add('hit');buf=[];setTimeout(()=>{if(!OFF)$('res').textContent='';render()},3000);return}}
+$('res').textContent='';}
+// tap pad
+$('pad').innerHTML=keys.map(k=>`<button data-k="${k}" style="background:${N[k].c}">${N[k].g}</button>`).join('');
+$('pad').onclick=e=>{const k=e.target.dataset.k;if(!k)return;beep(N[k].m);push(k)};
+function beep(m){try{const c=ctx||(ctx=new (window.AudioContext||window.webkitAudioContext)());const o=c.createOscillator(),g=c.createGain();o.type='triangle';o.frequency.value=440*Math.pow(2,(m-69)/12);g.gain.setValueAtTime(.25,c.currentTime);g.gain.exponentialRampToValueAtTime(.001,c.currentTime+.4);o.connect(g).connect(c.destination);o.start();o.stop(c.currentTime+.4)}catch(e){}}
+// pitch detection (autocorrelation)
+function detect(b,sr,thr,fmin){let r=0;for(let i=0;i<b.length;i++)r+=b[i]*b[i];r=Math.sqrt(r/b.length);$('lvl').style.width=Math.min(100,r*600)+'%';if(r<(thr||.015))return -1;
+const lo=Math.floor(sr/900),hi=Math.floor(sr/(fmin||200)),n=b.length-hi;let best=-1,bv=0;const c=[];
+for(let l=lo;l<=hi;l++){let s=0;for(let i=0;i<n;i++)s+=b[i]*b[i+l];c[l]=s}
+let s0=0;for(let i=0;i<n;i++)s0+=b[i]*b[i];
+for(let l=lo+1;l<hi;l++){if(c[l]>c[l-1]&&c[l]>=c[l+1]&&c[l]>bv){bv=c[l];best=l;if(bv>.9*s0)break}}
+if(best<0||bv<.4*s0)return -1;
+const a=c[best-1],bb=c[best],d=c[best+1],sh=(a-d)/(2*(a-2*bb+d))||0;return sr/(best+sh)}
+function lcs(a,b){const m=[];for(let i=0;i<=a.length;i++){m.push(new Array(b.length+1).fill(0))}for(let i=1;i<=a.length;i++)for(let j=1;j<=b.length;j++)m[i][j]=a[i-1]===b[j-1]?m[i-1][j-1]+1:Math.max(m[i-1][j],m[i][j-1]);return m[a.length][b.length]}
+function analyze(d,sr){const W=2048,hop=Math.round(sr/70);let mx=0;
+for(let i=0;i+W<=d.length;i+=hop*4){let r=0;for(let j=0;j<W;j+=4)r+=d[i+j]*d[i+j];mx=Math.max(mx,Math.sqrt(r/(W/4)))}
+const thr=Math.max(.003,.15*mx),tr=[];
+for(let i=0;i+W<=d.length;i+=hop){const f=detect(d.subarray(i,i+W),sr,thr,110);tr.push(f<0?null:69+12*Math.log2(f/440))}
+let best=null;
+for(let s=-14;s<=14;s++){const seq=[];let cur=null,cnt=0,done=false,gap=0;
+for(const p of tr){let k=null;if(p!=null){let bd=.9;for(const kk of keys){const dd=Math.abs(N[kk].m-(p+s));if(dd<bd){bd=dd;k=kk}}}
+if(k==null){gap++;if(gap>=3){cur=null;cnt=0;done=false}continue}
+gap=0;if(k===cur)cnt++;else{cur=k;cnt=1;done=false}
+if(cnt>=4&&!done){done=true;seq.push(k)}}
+const str=seq.join('');const hits=[];
+for(const [n,p] of SONGS){let i=str.indexOf(p);while(i>=0){hits.push([i,n]);i=str.indexOf(p,i+p.length)}}
+hits.sort((a,b)=>a[0]-b[0]);
+let lb=0,ls='';for(const [n,p] of SONGS){const l=lcs(str,p)/p.length;if(l>lb){lb=l;ls=n}}
+const c={s,hits,str,lb,ls};
+if(!best||hits.length>best.hits.length||(hits.length===best.hits.length&&(lb>best.lb+.001||(Math.abs(lb-best.lb)<=.001&&Math.abs(s)<Math.abs(best.s)))))best=c}
+const heard=[...best.str].map(k=>N[k].g).join(' ')||'nothing';
+if(best.hits.length)return '\u2728 '+best.hits.map(h=>h[1]).join(', ')+' \u2728'+(best.s?' (transposed '+best.s+' semitones)':'');
+return 'No exact match. Closest: '+best.ls+' ('+Math.round(best.lb*100)+'%). Heard: '+heard}
+let cur=null,cnt=0,done=false,OFF=null;
+function frame(f){if(f<0){cur=null;cnt=0;done=false;$('hz').textContent='—';return}
+const adj=69+12*Math.log2(f/440)-12*(+$('oct').value);
+let bk=null,bd=9;for(const k of keys){const d=Math.abs(N[k].m-adj);if(d<bd){bd=d;bk=k}}
+$('hz').textContent=f.toFixed(0)+' Hz';
+if(bd>1.2){cur=null;cnt=0}else{if(bk===cur)cnt++;else{cur=bk;cnt=1;done=false}
+if(cnt>=4&&!done){done=true;push(bk)}}}
+$('rec').onchange=async e=>{const fl=e.target.files[0];if(!fl)return;$('res').textContent='Analyzing…';
+try{const c=ctx||(ctx=new (window.AudioContext||window.webkitAudioContext)());const ab=(await fl.arrayBuffer()).slice(0);const a=await new Promise((ok,no)=>{const p=c.decodeAudioData(ab,ok,no);if(p&&p.catch)p.catch(no)});
+await new Promise(r=>setTimeout(r,30));$('res').textContent=analyze(a.getChannelData(0),a.sampleRate);}
+catch(err){OFF=null;$('res').textContent='Could not decode this file ('+((err&&err.name)||'error')+'). Try a Compressed (not Lossless) Voice Memo.';}};
+async function start(){try{
+const st=await navigator.mediaDevices.getUserMedia({audio:{echoCancellation:false,noiseSuppression:false,autoGainControl:false}});
+ctx=ctx||new (window.AudioContext||window.webkitAudioContext)();await ctx.resume();
+const an=ctx.createAnalyser();an.fftSize=2048;ctx.createMediaStreamSource(st).connect(an);const b=new Float32Array(2048);
+$('start').textContent='Listening… play an ocarina song';$('start').disabled=true;
+(function loop(){an.getFloatTimeDomainData(b);frame(detect(b,ctx.sampleRate));requestAnimationFrame(loop)})();
+}catch(e){$('start').textContent='Mic error: '+(e&&e.name||'unknown')+(e&&e.message?' – '+e.message.slice(0,80):'')+' (use the buttons below)';}}
+$('start').onclick=start;render();
+</script></body></html>
